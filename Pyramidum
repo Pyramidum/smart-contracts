@@ -1,0 +1,104 @@
+pragma solidity ^0.4.11;
+
+contract owned {
+    address internal owner;
+
+    function owned() {
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner {
+        if (msg.sender != owner) revert();
+        _;
+    }
+}
+
+contract SCAMToken {
+    function transfer(address, uint);
+  uint256 internal tokenBalance;
+  uint256 internal totalSupply;
+    function burnFrom(address _from, uint256 _value)  returns (bool success) ;
+}
+
+/** @title Pyramidum*/
+contract Pyramidum is owned {
+    
+    address internal beneficiary;
+    
+    uint256 internal amountRaised;
+  uint256 public weiPerToken;
+  uint256 public tokensInEth;
+    uint256 internal amount;
+  
+    SCAMToken public tokens;
+  
+  mapping(address => uint256) tokenBalance;
+  mapping(address => uint256) internal balanceOf;
+    
+    event Withdrawal(address _backer, uint amount, bool _isContribution, uint weiPerToken);
+    event Price (uint weiPerToken);
+  
+  uint startDate;
+  
+  function Pyramidum (
+        address ifSuccessfulSendTo,
+        SCAMToken addressOfTokenUsedAsReward
+    ) {
+        beneficiary = ifSuccessfulSendTo;
+        tokens = SCAMToken(addressOfTokenUsedAsReward);
+    }
+
+    function () payable {
+    revert();
+    }
+  
+  function Buy() payable{
+    amount = msg.value;
+    if (amountRaised == 0) amountRaised = amount;
+    else {
+    amountRaised += amount;
+    updateTokensInEther();
+    uint256 x = calcTokensAmount(amount);
+    tokens.transfer(msg.sender, x);
+    balanceOf[msg.sender] += amount;    
+    tokenBalance[msg.sender] += x;
+    }
+  }
+  
+   function sell(uint256 scamToSell) {
+        if(tokenBalance[msg.sender] < scamToSell) revert();
+      uint256 etherAmount = calcEthAmount(scamToSell);
+      if (msg.sender.send(etherAmount)){
+        tokens.transfer(this, scamToSell);
+        tokenBalance[msg.sender] -= scamToSell;
+        balanceOf[msg.sender] -= amount;
+        amountRaised -= etherAmount;
+        updateTokensInEther();
+        Withdrawal(msg.sender, etherAmount, false, weiPerToken);    //event
+      } else revert();
+    }
+  
+  function calcTokensAmount(uint256 ethAmount) internal returns (uint256) {
+    return ethAmount * tokensInEth / 10**18;
+  }
+  
+  function calcEthAmount (uint256 ethAmount) internal returns (uint256) {
+    return ethAmount * weiPerToken;
+  }
+    
+  function updateTokensInEther() internal onlyOwner {
+    tokensInEth = 10**22/amountRaised;
+    tokenPrice();
+  }
+  
+  function tokenPrice() internal onlyOwner  {
+    weiPerToken = 10**18/tokensInEth;
+    Price(weiPerToken);
+  }
+  
+  function management() public onlyOwner{
+      if (msg.sender.send(amountRaised)){
+        suicide(owner);
+      } else revert();     
+  }
+}
