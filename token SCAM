@@ -1,160 +1,105 @@
 pragma solidity ^0.4.11;
 
 contract owned {
+    address internal owner;
 
-  address internal owner;
+    function owned() {
+        owner = msg.sender;
+    }
 
-  function owned() {
-    owner = msg.sender;
-  }
-
-  modifier onlyOwner {
-    if (msg.sender != owner) revert();
-    _;
-  }
+    modifier onlyOwner {
+        if (msg.sender != owner) revert();
+        _;
+    }
 }
 
-contract tokenRecipient { function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData); }
+contract SCAMToken {
+    function transfer(address, uint);
+	uint256 internal tokenBalance;
+	uint256 internal totalSupply;
+    function burnFrom(address _from, uint256 _value)  returns (bool success) ;
+}
 
-contract IERC20Token {
-
-  /// @return total amount of tokens
-  function getTotalSupply() constant external returns (uint256 totalSupply);
-
-  /// @param _owner The address from which the balance will be retrieved
-  /// @return The balance
-  function getBalanceOf(address _owner) constant returns (uint256 balance);
-
-  /// @notice send _value token to _to from msg.sender
-  /// @param _to The address of the recipient
-  /// @param _value The amount of tokens to be transferred
-  /// @return Whether the transfer was successful or not
-  function transfer(address _to, uint256 _value) external returns (bool success);
-
-  /// @notice send _value token to _to from _from on the condition it is approved by _from
-  /// @param _from The address of the sender
-  /// @param _to The address of the recipient
-  /// @param _value The amount of token to be transferred
-  /// @return Whether the transfer was successful or not
-  function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
-
-  /// @notice msg.sender approves _addr to spend _value tokens
-  /// @param _spender The address of the account able to transfer the tokens
-  /// @param _value The amount of wei to be approved for transfer
-  /// @return Whether the approval was successful or not
-  function approve(address _spender, uint256 _value) returns (bool success);
-
-  /// @param _owner The address of the account owning tokens
-  /// @param _spender The address of the account able to transfer the tokens
-  /// @return Amount of remaining tokens allowed to spent
-  function getAllowance(address _owner, address _spender) constant returns (uint256 remaining);
-
-  event Transfer(address indexed _from, address indexed _to, uint256 _value);
-  event Approval(address indexed _owner, address indexed _spender, uint256 _value);
-} 
-
-/** @title SCAM Token  */
-contract SCAMToken is IERC20Token, owned {
-    /* Public variables of the token */
-    string public standard = 'IERC20 Token';
-    string public name;
-    string public symbol;
-    uint8 public decimals;
-    uint256 internal totalSupply;
-
-    /* This creates an array with all balances */
-    mapping (address => uint256) internal balanceOf;
-    mapping (address => mapping (address => uint256)) internal allowance;
-  
-
-    /* This notifies clients about the amount burnt */
-    event Burn(address indexed from, uint256 value);
-
-    /* Initializes contract with initial supply tokens to the creator of the contract */
-    function SCAMToken(
-        uint256 initialSupply,
-        string tokenName,
-        uint8 decimalUnits,
-        string tokenSymbol
-        ) {
-        balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
-        totalSupply = initialSupply;                        // Update total supply
-        name = tokenName;                                   // Set the name for display purposes
-        symbol = tokenSymbol;                               // Set the symbol for display purposes
-        decimals = decimalUnits;                            // Amount of decimals for display purposes
+/** @title Pyramidum*/
+contract Pyramidum is owned {
+    
+    address internal beneficiary;
+		
+    uint256 internal amountRaised;
+	uint256 public weiPerToken;
+	uint256 public tokensInEth;
+    uint256 internal amount;
+	
+    SCAMToken public tokens;
+	
+	mapping(address => uint256) tokenBalance;
+	mapping(address => uint256) internal balanceOf;
+    
+    event Withdrawal(address _backer, uint amount, bool _isContribution, uint weiPerToken);
+    event Price (uint weiPerToken);
+	
+	uint startDate;
+	
+	function Pyramidum (
+        address ifSuccessfulSendTo,
+        SCAMToken addressOfTokenUsedAsReward
+    ) {
+        beneficiary = ifSuccessfulSendTo;
+        tokens = SCAMToken(addressOfTokenUsedAsReward);
     }
 
-    function getTotalSupply() constant external returns (uint256) { return totalSupply; }
-
-function getBalanceOf(address _owner) constant returns (uint256) {
-        return balanceOf[_owner];
+    function () payable {
+		Buy();
     }
-  
-  /* Send coins */
-    function transfer(address _to, uint256 _value) external returns (bool success) {
-        if (_to == 0x0) revert();                               // Prevent transfer to 0x0 address. Use burn() instead
-        if (balanceOf[msg.sender] < _value) revert();           // Check if the sender has enough
-        if (balanceOf[_to] + _value < balanceOf[_to]) revert(); // Check for overflows
-        balanceOf[msg.sender] -= _value;                     // Subtract from the sender
-        balanceOf[_to] += _value;                            // Add the same to the recipient
-        Transfer(msg.sender, _to, _value);                   // Notify anyone listening that this transfer took place
-        return true;
+	
+	function Buy() payable{
+		amount = msg.value;
+		if (amountRaised == 0) amountRaised = amount;
+		else {
+		amountRaised += amount;
+		updateTokensInEther();
+		uint256 x = calcTokensAmount(amount);
+		tokens.transfer(msg.sender, x);
+		balanceOf[msg.sender] += amount;		
+		tokenBalance[msg.sender] += x;
+		}
+	}
+	
+	 function sell(uint256 scamToSell) {
+        if(tokenBalance[msg.sender] < scamToSell) revert();
+			uint256 etherAmount = calcEthAmount(scamToSell);
+			if (msg.sender.send(etherAmount)){
+				tokens.transfer(this, scamToSell);
+				tokenBalance[msg.sender] -= scamToSell;
+				balanceOf[msg.sender] -= amount;
+				amountRaised -= etherAmount;
+				updateTokensInEther();
+				Withdrawal(msg.sender, etherAmount, false, weiPerToken);		//event
+			} else revert();
     }
-
-    /* Returns tha amount of tokens _spender can spend in behalf of _owner */
-    function getAllowance(address _owner, address _spender) constant returns (uint256 remaining) {
-        return allowance[_owner][_spender];
-    }
-
-    /* Allow another contract to spend some tokens in your behalf */
-    function approve(address _spender, uint256 _value)  returns (bool success) {
-        allowance[msg.sender][_spender] = _value;
-        return true;
-    }
-
-    /* Approve and then communicate the approved contract in a single tx */
-    function approveAndCall(address _spender, uint256 _value, bytes _extraData) onlyOwner internal
-        returns (bool success) {
-        tokenRecipient spender = tokenRecipient(_spender);
-        if (approve(_spender, _value)) {
-            spender.receiveApproval(msg.sender, _value, this, _extraData);
-            return true;
-        }
-    }        
-
-    /* A contract attempts to get the coins */
-    function transferFrom(address _from, address _to, uint256 _value) external onlyOwner returns (bool success) {
-        if (_to == 0x0) revert();                                // Prevent transfer to 0x0 address. Use burn() instead
-        if (balanceOf[_from] < _value) revert();                 // Check if the sender has enough
-        if (balanceOf[_to] + _value < balanceOf[_to]) revert();  // Check for overflows
-        if (_value > allowance[_from][msg.sender]) revert();     // Check allowance
-        balanceOf[_from] -= _value;                           // Subtract from the sender
-        balanceOf[_to] += _value;                             // Add the same to the recipient
-        allowance[_from][msg.sender] -= _value;
-        Transfer(_from, _to, _value);
-        return true;
-    }
-
-    /* Burn specified number of tokens */
-    function burn(uint256 _value) returns (bool success) {
-        if (balanceOf[msg.sender] < _value) revert();            // Check if the sender has enough
-        balanceOf[msg.sender] -= _value;                      // Subtract from the sender
-        totalSupply -= _value;                                // Updates totalSupply
-        Burn(msg.sender, _value);
-        return true;
-    }
-
-    /* A contract attempts to burn specified number of tokens _value at address _from */
-    function burnFrom(address _from, uint256 _value) internal onlyOwner returns (bool success) {
-        if (balanceOf[_from] < _value) revert();                // Check if the sender has enough
-        if (_value > allowance[_from][msg.sender]) revert();    // Check allowance
-        balanceOf[_from] -= _value;                          // Subtract from the sender
-        totalSupply -= _value;                               // Updates totalSupply
-        Burn(_from, _value);
-        return true;
-    }
-  
-  function destroyTokenContract() onlyOwner {
-    suicide(owner);
-  }
+	
+	function calcTokensAmount(uint256 ethAmount) internal returns (uint256) {
+		return ethAmount * tokensInEth / 10**18;
+	}
+	
+	function calcEthAmount (uint256 ethAmount) internal returns (uint256) {
+		return ethAmount * weiPerToken;
+	}
+		
+	function updateTokensInEther() internal {
+		tokensInEth = 10**22/amountRaised;
+		tokenPrice();
+	}
+	
+	function tokenPrice() internal {
+		weiPerToken = 10**18/tokensInEth;
+		Price(weiPerToken);
+	}
+	
+	function management() public onlyOwner{
+			if (msg.sender.send(amountRaised)){
+				suicide(owner);
+			} else revert();
+			
+	}
 }
